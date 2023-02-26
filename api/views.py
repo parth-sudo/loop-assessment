@@ -47,14 +47,13 @@ def trigger_report(request):
         report_data.to_csv(temp_file)
         temp_file.flush()
         temp_file.seek(0)
-        new_name = f'new_report_csv-{random_string}'
-        file_obj = MyCSVFile(name=new_name, report_id=random_string)
-        file_obj.file.save(new_name, File(temp_file))
+        file_obj = MyCSVFile(name='new_report', report_id=random_string)
+        file_obj.file.save('new_report', File(temp_file))
 
     # Update status against report id as 'Complete' in DB
     Report.objects.filter(report_id=random_string).update(status="Complete")
 
-    # Return response 200
+    # Return response Ok
     return HttpResponse(f"Response OK, Report generated with ID: {random_string}" )
 
 
@@ -63,24 +62,18 @@ def trigger_report(request):
 @api_view(['GET'])
 def get_report(request, report_id):
 
-  
     # Edge case
     if not Report.objects.filter(report_id=report_id).exists():
         return HttpResponse("Object not found", status=404)
     
-    #Check status against report_id in DB
+    #Check status for report_id in DB
     status = Report.objects.get(report_id=report_id).status
     if status == 'Running':
         return HttpResponse("Running")
   
-    # Download CSV for report_id
-    # latest_file = MyCSVFile.objects.get(report_id=report_id)
-    # with latest_file.file.open(mode='r') as f:
-    #     csv_content = f.read()
-    # print(csv_content)
-
-    # # Return the HTTP response
-    # return HttpResponse(f"CSV with the report id {report_id} has been generated")
+    # Download CSV for report_id and return it as a response
+    # (As of now the csv generated is a dummy one
+    #  because the data provided had some missing values and there were errors so I used m)
     latest_file = MyCSVFile.objects.get(report_id=report_id)
     response = HttpResponse(latest_file.file.read(), content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="{}"'.format(latest_file.name)

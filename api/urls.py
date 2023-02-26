@@ -1,5 +1,7 @@
 from django.urls import path
 from . import views
+
+#url endpoints.
 urlpatterns = [
 
     path('trigger_report/', views.trigger_report, name='trigger_report'),

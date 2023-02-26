@@ -2,11 +2,10 @@ import random
 import string
 import pandas as pd
 from .models import MyCSVFile
-
-
 from datetime import datetime, timedelta
 import pytz
 
+#utility function to generate report.
 def generate_report_util(store_status_csv_path, menu_hours_csv_path, timezone_csv_path):
     # Read CSV files
     store_status = pd.read_csv(store_status_csv_path)
@@ -81,12 +80,7 @@ def generate_report_util(store_status_csv_path, menu_hours_csv_path, timezone_cs
     print(report_df)
     return report_df
 
-
-
-
-
-
-
+# Random string generator.
 def random_string_generator():
     letters_and_digits = string.ascii_letters + string.digits
     return ''.join(random.choice(letters_and_digits) for i in range(10))
