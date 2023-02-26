@@ -1,99 +1,90 @@
 import random
 import string
-
-from datetime import datetime, timedelta
-from pytz import timezone
 import pandas as pd
 from .models import MyCSVFile
 
 
-def generate_report_util(store_status_path, menu_hours_path, timezone_path):
+from datetime import datetime, timedelta
+import pytz
 
-    # Read in the CSV files as dataframes
-    store_status_df = pd.read_csv(store_status_path)
-    menu_hours_df = pd.read_csv(menu_hours_path)
-    timezone_df = pd.read_csv(timezone_path)
+def generate_report_util(store_status_csv_path, menu_hours_csv_path, timezone_csv_path):
+    # Read CSV files
+    store_status = pd.read_csv(store_status_csv_path)
+    menu_hours = pd.read_csv(menu_hours_csv_path)
+    timezones = pd.read_csv(timezone_csv_path)
 
-    # Merge the menu_hours and timezone dataframes on store_id
-    menu_timezone_df = pd.merge(menu_hours_df, timezone_df, on='store_id')
+    # Merge dataframes on store_id
+    df = pd.merge(store_status, menu_hours, on='store_id')
+    df = pd.merge(df, timezones, on='store_id')
 
-    # Convert the timestamp_utc column in store_status_df to a datetime object
-    store_status_df['timestamp_utc'] = pd.to_datetime(store_status_df['timestamp_utc'])
+    # Convert timestamp_utc column to datetime and set timezone
+    df['timestamp_utc'] = pd.to_datetime(df['timestamp_utc']).dt.tz_convert('UTC')
 
-    # Convert the start_time_local and end_time_local columns in menu_timezone_df to timedelta objects
-    menu_timezone_df['start_time_local'] = pd.to_timedelta(menu_timezone_df['start_time_local'])
-    menu_timezone_df['end_time_local'] = pd.to_timedelta(menu_timezone_df['end_time_local'])
+    # Convert start_time_local and end_time_local columns to timedelta
+    df['start_time_local'] = pd.to_timedelta(df['start_time_local'])
+    df['end_time_local'] = pd.to_timedelta(df['end_time_local'])
 
-    # Get the current time in UTC
-    current_time_utc = datetime.utcnow()
+    # Convert timezone_str column to timezone object
+    df['timezone'] = df['timezone_str'].apply(pytz.timezone)
 
-    # Group store_status_df by store_id and the hour of the timestamp_utc column
-    store_status_hourly_grouped = store_status_df.groupby(['store_id', store_status_df['timestamp_utc'].dt.hour])
+    # Get current UTC time
+    now_utc = datetime.now(tz=pytz.utc)
 
-    # Calculate the uptime and downtime for the last hour
-    uptime_last_hour = []
-    downtime_last_hour = []
-    for store_id, hour in store_status_hourly_grouped.groups.keys():
-        hour_start_utc = current_time_utc.replace(hour=hour, minute=0, second=0, microsecond=0) - timedelta(hours=1)
-        hour_end_utc = current_time_utc.replace(hour=hour, minute=0, second=0, microsecond=0)
-        hour_statuses = store_status_hourly_grouped.get_group((store_id, hour))
-        last_status = hour_statuses.tail(1)['status'].values[0]
-        if last_status == 'active':
-            uptime_last_hour.append((store_id, (hour_end_utc - hour_start_utc).total_seconds() // 60))
-            downtime_last_hour.append((store_id, 0))
-        else:
-            uptime_last_hour.append((store_id, 0))
-            downtime_last_hour.append((store_id, (hour_end_utc - hour_start_utc).total_seconds() // 60))
+    # define time ranges
+    last_hour_end = now_utc - timedelta(minutes=now_utc.minute, seconds=now_utc.second, microseconds=now_utc.microsecond)
+    last_hour_start = last_hour_end - timedelta(hours=1)
+    last_day_end = now_utc - timedelta(hours=now_utc.hour, minutes=now_utc.minute, seconds=now_utc.second, microseconds=now_utc.microsecond)
+    last_day_start = last_day_end - timedelta(days=1)
+    last_week_end = now_utc - timedelta(hours=now_utc.hour, minutes=now_utc.minute, seconds=now_utc.second, microseconds=now_utc.microsecond)
+    last_week_start = last_week_end - timedelta(weeks=1)
 
-    # Group store_status_df by store_id and the day of the timestamp_utc column
-    store_status_daily_grouped = store_status_df.groupby(['store_id', store_status_df['timestamp_utc'].dt.date])
+    #correct till here.
 
-    # Calculate the uptime and downtime for the last day
-    uptime_last_day = []
-    downtime_last_day = []
-    for store_id, day in store_status_daily_grouped.groups.keys():
-        day_start_utc = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
-        day_end_utc = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_statuses = store_status_daily_grouped.get_group((store_id, day))
-        last_status = day_statuses.tail(1)['status'].values[0]
-        if last_status == 'active':
-            uptime_last_day.append((store_id, (day_end_utc - day_start_utc).total_seconds() // 3600))
-            downtime_last_day.append((store_id, 0))
-        else:
-            uptime_last_day.append((store_id, 0))
-            downtime_last_day.append((store_id, (day_end_utc - day_start_utc).total_seconds() // 3600))
-    store_status_weekly_grouped = store_status_df.groupby(['store_id', store_status_df['timestamp_utc'].dt.week])
+    # filter data for each time range
+    last_hour_df = df[df['timestamp_utc'].between(last_hour_start, last_hour_end)]
+    last_day_df = df[df['timestamp_utc'].between(last_day_start, last_day_end)]
+    last_week_df = df[df['timestamp_utc'].between(last_week_start, last_week_end)]
 
-    # Calculate the update time for the last week
-    update_last_week = []
-    for store_id, week in store_status_weekly_grouped.groups.keys():
-        week_start_utc = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(weeks=1)
-        week_end_utc = current_time_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-        week_statuses = store_status_weekly_grouped.get_group((store_id, week))
-        num_updates = week_statuses[week_statuses['status'] == 'update'].shape[0]
-        update_last_week.append((store_id, num_updates))
+    print(last_day_df)
 
-    # Merge the uptime and downtime dataframes
-    uptime_df = pd.DataFrame(uptime_last_hour + uptime_last_day + uptime_last_week, columns=['store_id', 'uptime'])
-    uptime_df = uptime_df.groupby('store_id').sum().reset_index()
-    downtime_df = pd.DataFrame(downtime_last_hour + downtime_last_day + downtime_last_week, columns=['store_id', 'downtime'])
-    downtime_df = downtime_df.groupby('store_id').sum().reset_index()
+    # calculate uptime and downtime for each time range
+    uptime_last_hour = last_hour_df[last_hour_df['status'] == 'active']
+    downtime_last_hour = last_hour_df[last_hour_df['status'] == 'inactive']
+    uptime_last_day = last_day_df[last_day_df['status'] == 'active']
+    downtime_last_day = last_day_df[last_day_df['status'] == 'inactive']
+    uptime_last_week = last_week_df[last_week_df['status'] == 'active']
+    downtime_last_week = last_week_df[last_week_df['status'] == 'inactive']
 
-    # Merge the uptime, downtime, and update dataframes
-    report_df = pd.merge(uptime_df, downtime_df, on='store_id')
-    report_df = pd.merge(report_df, pd.DataFrame(update_last_week, columns=['store_id', 'updates']), on='store_id')
+    # calculate uptime and downtime percentages for each time range
+    uptime_pct_last_hour = len(uptime_last_hour) / len(last_hour_df) if len(last_hour_df) > 0 else 0
+    downtime_pct_last_hour = len(downtime_last_hour) / len(last_hour_df) if len(last_hour_df) > 0 else 0
+    uptime_pct_last_day = len(uptime_last_day) / len(last_day_df) if len(last_day_df) > 0 else 0
+    downtime_pct_last_day = len(downtime_last_day) / len(last_day_df) if len(last_day_df) > 0 else 0
+    uptime_pct_last_week = len(uptime_last_week) / len(last_week_df) if len(last_week_df) > 0 else 0
+    downtime_pct_last_week = len(downtime_last_week) / len(last_week_df) if len(last_week_df) > 0 else 0
 
-    # Convert the uptime and downtime columns to minutes and hours, respectively
-    report_df['uptime_last_hour'] = report_df['uptime'].astype('int')
-    report_df['uptime_last_day'] = report_df['uptime'] // 60
-    report_df['downtime_last_hour'] = report_df['downtime'].astype('int')
-    report_df['downtime_last_day'] = report_df['downtime'] // 60
-    report_df['update_last_week'] = report_df['updates']
+    # create report dataframe
+    report_df = pd.DataFrame({
+        'uptime_last_hour': [uptime_pct_last_hour],
+        'uptime_last_day': [uptime_pct_last_day],
+        'uptime_last_week': [uptime_pct_last_week],
+        'downtime_last_hour': [downtime_pct_last_hour],
+        'downtime_last_day': [downtime_pct_last_day],
+        'downtime_last_week': [downtime_pct_last_week]
+    }, index=[df['store_id'][0]])
 
-    # Drop the unnecessary columns
-    report_df = report_df.drop(['uptime', 'downtime', 'updates'], axis=1)
+    # rename the index column
+    report_df.index.names = ['store_id']
 
+    # display report
+
+    print(report_df)
     return report_df
+
+
+
+
+
 
 
 def random_string_generator():
