@@ -1,9 +1,8 @@
 # loop-assessment
 
-# Files to look for (Main files)-
-
 Python Framework used - Django
 
+Files to look for (Main files)-
 api/views.py, api/extras.py, api/models.py, api/urls.py.
 
 Video demo (output csv is incorrect for now, rest everything works fine) - 
